@@ -1,0 +1,22 @@
+{
+  "pattern_id": "gemm_square_warp_specialized_sm90",
+  "name": "Square GEMM with Warp-Specialized Kernel (Hopper SM90)",
+  "optimization_rule": "GEMM",
+  "data_type": "float16 (FP16) with FP32 accumulation",
+  "target_architecture": {
+    "gpu": "H100",
+    "compute_capability": "SM90",
+    "tensor_cores": "FP16 (TMA + GMMA)"
+  },
+  "computation_precision": "fp16_tensor_core",
+  "implementation": {
+    "cutlass_version": "3.x",
+    "kernel_schedule": "KernelScheduleAuto (warp-specialized cooperative)",
+    "description": "Hopper warp-specialized cooperative GEMM using TMA transfers and GMMA instructions. Based on CUTLASS Example 48.",
+    "kernel_files": [
+      "cutlass_kernels/48_hopper_warp_specialized_gemm.cu"
+    ]
+  },
+  "status": "kernel_only",
+  "pattern_directory": "pattern_table/gemm/fp16/sm90/square_gemm_warp_specialized"
+}

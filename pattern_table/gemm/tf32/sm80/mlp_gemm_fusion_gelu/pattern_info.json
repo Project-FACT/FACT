@@ -1,0 +1,104 @@
+{
+  "pattern_id": "p2_mlp_gemm_fusion_gelu",
+  "name": "MLP GEMM Fusion with GELU Activation",
+  "timestamp": "2026-04-23T00:00:00",
+  "kernelbench_problem": {
+    "level": 3,
+    "problem_id": 44,
+    "problem_file": "44_MiniGPTBlock.py",
+    "description": "MLP block from MiniGPT: c_fc (768->3072) + GELU + c_proj (3072->768)"
+  },
+  "target_architecture": {
+    "gpu": "A100",
+    "compute_capability": "SM80",
+    "tensor_cores": "FP16"
+  },
+  "optimization_rule": "GEMM with Epilogue Fusion (GELU activation)",
+  "data_type": "float16 (FP16) with FP32 accumulation",
+  "computation_precision": "FP16 tensor cores",
+  "input_shapes": {
+    "input": "[128*512, 768]",
+    "fc_weight": "[3072, 768]",
+    "fc_bias": "[3072]",
+    "proj_weight": "[768, 3072]",
+    "proj_bias": "[768]",
+    "output": "[128*512, 768]"
+  },
+  "implementation": {
+    "cutlass_version": "3.x",
+    "module": "nvidia-cutlass/3.8.0.0",
+    "tile_config": {
+      "threadblock_tile": "128x128x32",
+      "warp_tile": "64x64x32",
+      "instruction_shape": "16x8x16 (FP16 MMA shape on SM80)"
+    },
+    "kernel_level": {
+      "pipelining_strategy": "Multistage (cp.async)",
+      "pipeline_stages": 3,
+      "description": "3-stage pipeline for Ampere. All warps act as producer+consumer on SM80."
+    },
+    "grid_level": {
+      "scheduling": "data_parallel",
+      "description": "Standard 2D tiling. Split-K not needed (K dimension moderate)."
+    },
+    "epilogue": {
+      "gemm1": "LinearCombinationGELU with GELU_taylor approximation (matches PyTorch NewGELU)",
+      "gemm2": "LinearCombination (standard, no activation)"
+    },
+    "layout": {
+      "input": "RowMajor",
+      "weight": "ColumnMajor (transposed for efficient access)",
+      "output": "RowMajor"
+    },
+    "kernel_files": [
+      "cutlass_kernels/mlp_gemm_fusion.cu",
+      "cutlass_kernels/main.cpp"
+    ]
+  },
+  "verification": {
+    "correctness": "pending",
+    "tolerance": "1e-2",
+    "test_sizes": [
+      [
+        4096,
+        768
+      ],
+      [
+        16384,
+        768
+      ],
+      [
+        65536,
+        768
+      ]
+    ],
+    "notes": "FP16 tolerance of 1e-2 used"
+  },
+  "performance": {
+    "problem_size": 65536,
+    "baseline_time_ms": 0.0,
+    "custom_time_ms": 0.0,
+    "speedup": 1.0,
+    "overhead_percent": 0.0,
+    "throughput_gflops": 0.0,
+    "peak_utilization_percent": 0.0,
+    "iterations": 20
+  },
+  "status": "pending",
+  "validation_workflow": {
+    "step0_check_env": "pending",
+    "step1_compilation": "pending",
+    "step2_correctness": "pending",
+    "step3_benchmark": "pending"
+  },
+  "supporting_examples": [
+    "/cutlass/examples/12_gemm_bias_relu/gemm_bias_relu.cu",
+    "/cutlass/examples/13_two_tensor_op_fusion/fused_two_gemms_f16_sm80_rf.cu",
+    "/cutlass/examples/25_ampere_fprop_mainloop_fusion/",
+    "/cutlass/test/unit/gemm/device/sm80_gemm_f16_f16_f32_tensor_op_f32.cu"
+  ],
+  "pattern_directory": "pattern_table/gemm/fp32/sm80/mlp_gemm_fusion_gelu",
+  "template_reference": "/home/sinaheidari/marco_optimizer/kernelbench_cutlass_module",
+  "validation_mode": "test_scripts",
+  "notes": "FP16 tensor cores with FP32 accumulation for numerical stability. GELU activation fused into first GEMM epilogue using GELU_taylor approximation which matches PyTorch's NewGELU implementation."
+}

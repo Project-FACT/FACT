@@ -1,0 +1,122 @@
+{
+  "pattern_id": "p2_swiglu_mlp_fusion_fp16_sm80",
+  "name": "SwiGLU MLP Fusion with FP16",
+  "timestamp": "2026-04-29T12:00:00",
+  "kernelbench_problem": {
+    "level": 3,
+    "problem_id": 51,
+    "problem_file": "51_Llama3_8B_Block.py",
+    "description": "SwiGLU MLP block from Llama 3 8B Single Transformer Block"
+  },
+  "target_architecture": {
+    "gpu": "A100",
+    "compute_capability": "SM80",
+    "tensor_cores": "FP16"
+  },
+  "optimization_rule": "GEMM with Epilogue Fusion (SwiGLU)",
+  "data_type": "float16 (FP16) with FP32 accumulation",
+  "computation_precision": "fp16_tensor_core",
+  "input_shapes": {
+    "batch_size": 16,
+    "seq_len": 2048,
+    "hidden_size": 4096,
+    "intermediate_dim": 14336,
+    "expansion_ratio": 3.5
+  },
+  "implementation": {
+    "cutlass_version": "3.8.0",
+    "module": "nvidia-cutlass/3.8.0.0",
+    "tile_config": {
+      "threadblock_tile": "128x128x32",
+      "warp_tile": "64x64x32",
+      "instruction_shape": "16x8x16 (FP16 MMA)"
+    },
+    "kernel_level": {
+      "pipelining_strategy": "multistage (cp.async)",
+      "pipeline_stages": 3,
+      "description": "Ampere multistage pipeline with cp.async for prefetching"
+    },
+    "grid_level": {
+      "scheduling": "data_parallel",
+      "description": "Standard 2D tiling with GemmIdentityThreadblockSwizzle"
+    },
+    "epilogue": "SiLU activation (LinearCombinationSilu) + elementwise multiply",
+    "layout": "RowMajor input, ColumnMajor weights, RowMajor output",
+    "kernel_files": [
+      "cutlass_kernels/swiglu_mlp_fusion.cu",
+      "cutlass_kernels/main.cpp"
+    ],
+    "description": "Two-kernel approach: (1) gate_proj + SiLU + up_proj + elementwise multiply, (2) down_proj",
+    "hybrid_strategy": {
+      "attention": "PyTorch baseline (not optimized)",
+      "mlp": "CUTLASS FP16 tensor cores (optimized)",
+      "rationale": "Isolate SwiGLU MLP fusion speedup while maintaining full LlamaDecoderLayer structure"
+    }
+  },
+  "verification": {
+    "correctness": "passed",
+    "tolerance": 0.01,
+    "test_sizes": [
+      [
+        16,
+        256,
+        4096
+      ],
+      [
+        16,
+        1024,
+        4096
+      ],
+      [
+        16,
+        2048,
+        4096
+      ]
+    ],
+    "notes": "FP16 tolerance for numerical comparison - all test sizes passed"
+  },
+  "performance": {
+    "problem_size": "16x2048x4096",
+    "baseline_time_ms": 654.437,
+    "custom_time_ms": 293.761,
+    "full_model_speedup": 2.228,
+    "mlp_only_speedup": 8.423,
+    "mlp_throughput_gflops": 233353.47,
+    "peak_utilization_percent": 74.8,
+    "iterations": 20,
+    "benchmarking_mode": "dual",
+    "all_results": {
+      "size_16_256_4096": {
+        "full_speedup": 2.809,
+        "mlp_speedup": 9.831,
+        "mlp_gflops": 269673.94
+      },
+      "size_16_1024_4096": {
+        "full_speedup": 2.469,
+        "mlp_speedup": 8.459,
+        "mlp_gflops": 233318.12
+      },
+      "size_16_2048_4096": {
+        "full_speedup": 2.228,
+        "mlp_speedup": 8.423,
+        "mlp_gflops": 233353.47
+      }
+    },
+    "notes": "Dual benchmarking: (1) Full LlamaDecoderLayer (Attention + MLP), (2) MLP sub-pattern only. Peak utilization: 233 TFLOPS / 312 TFLOPS (A100) = 74.8%"
+  },
+  "status": "accepted",
+  "validation_workflow": {
+    "step0_check_env": "passed",
+    "step1_compilation": "passed",
+    "step2_correctness": "passed",
+    "step3_benchmark": "passed"
+  },
+  "supporting_examples": [
+    "/Users/raycatcher/Desktop/cutlass_agent/cutlass/examples/13_two_tensor_op_fusion/fused_two_gemms_f16_sm80_rf.cu",
+    "/Users/raycatcher/Desktop/cutlass_agent/cutlass/include/cutlass/epilogue/thread/linear_combination_silu.h",
+    "/Users/raycatcher/Desktop/cutlass_agent/agent_work/pattern_table/gemm/a100/mlp_gemm_fusion_gelue"
+  ],
+  "pattern_directory": "pattern_table/gemm/fp16/sm80/swiglu_mlp_fusion",
+  "template_reference": "/Users/raycatcher/Desktop/cutlass_agent/kernelbench_cutlass_module",
+  "notes": "SwiGLU fusion for Llama 3 8B MLP. Uses CUTLASS SiLU epilogue with dual-GEMM strategy (gate+up) followed by elementwise multiply and down_proj. Achieved 8.4x MLP-only speedup and 2.2x full model speedup with 74.8% peak utilization."
+}

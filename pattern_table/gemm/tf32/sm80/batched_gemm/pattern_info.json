@@ -1,0 +1,123 @@
+{
+  "pattern_id": "gemm_batched_tf32_sm80",
+  "name": "Batched GEMM with Tuned Tile Shape (TF32)",
+  "timestamp": "2026-04-23T01:13:11",
+  "kernelbench_problem": {
+    "level": 1,
+    "problem_id": 3,
+    "problem_file": "3_Batched_matrix_multiplication.py",
+    "description": "Batched matrix multiplication C[b] = A[b] * B[b] via torch.bmm"
+  },
+  "target_architecture": {
+    "gpu": "A100",
+    "compute_capability": "SM80",
+    "tensor_cores": "TF32"
+  },
+  "optimization_rule": "Batched GEMM",
+  "data_type": "float32",
+  "computation_precision": "tf32",
+  "input_shapes": {
+    "batch_size": 128,
+    "A_shape": [
+      128,
+      512,
+      1024
+    ],
+    "B_shape": [
+      128,
+      1024,
+      2048
+    ],
+    "C_shape": [
+      128,
+      512,
+      2048
+    ]
+  },
+  "implementation": {
+    "cutlass_version": "3.8.0.0",
+    "module": "nvidia-cutlass/3.8.0.0",
+    "tile_config": {
+      "threadblock_tile": "128x256x32",
+      "warp_tile": "64x64x32",
+      "instruction_shape": "16x8x8"
+    },
+    "kernel_level": {
+      "pipelining_strategy": "multistage",
+      "description": "Ampere (SM80) multistage pipeline with 3 stages using cp.async prefetching; all warps dual producer/consumer"
+    },
+    "grid_level": {
+      "scheduling": "data_parallel",
+      "description": "Standard data-parallel tile scheduling via GemmUniversal kBatched mode with 128 independent GEMMs. Note: ThreadblockSwizzleStreamK was used as the swizzle type but Stream-K heuristics only activate in kGemm mode, so this is effectively data-parallel."
+    },
+    "epilogue": "LinearCombination (alpha=1, beta=0)",
+    "layout": "RowMajor for all matrices",
+    "kernel_files": [
+      "cutlass_kernels/batched_streamk_tf32_gemm.cu",
+      "cutlass_kernels/main.cpp"
+    ]
+  },
+  "verification": {
+    "correctness": "passed",
+    "tolerance": 0.01,
+    "test_sizes": [
+      [
+        16,
+        256,
+        256,
+        512
+      ],
+      [
+        128,
+        512,
+        1024,
+        2048
+      ]
+    ],
+    "notes": "30/30 auto-tune configs passed correctness. TF32 precision differences within tolerance."
+  },
+  "performance": {
+    "problem_size": "batch=128, M=512, K=1024, N=2048",
+    "baseline_time_ms": 2.825,
+    "custom_time_ms": 2.402,
+    "speedup": 1.176,
+    "overhead_percent": -15,
+    "throughput_gflops": 114413.89,
+    "peak_utilization_percent": 73.3,
+    "iterations": 50
+  },
+  "autotune": {
+    "total_configs_tested": 30,
+    "configs_passed_correctness": 30,
+    "configs_benchmarked": 30,
+    "best_tile": [
+      128,
+      256,
+      32
+    ],
+    "best_warp": [
+      64,
+      64,
+      32
+    ],
+    "best_stages": 3,
+    "best_gflops": 114413.89,
+    "best_efficiency_pct": 73.3,
+    "results_file": "results/auto-tune/autotune_results.json"
+  },
+  "status": "accepted",
+  "validation_workflow": {
+    "step1_setup_env": "passed",
+    "step2_compilation": "passed",
+    "step3_correctness": "passed",
+    "step4_benchmark": "passed",
+    "step5_autotune": "passed"
+  },
+  "supporting_examples": [
+    "nvidia-cutlass/3.8.0.0/examples/05_batched_gemm",
+    "nvidia-cutlass/3.8.0.0/examples/41_tensorop_ampere_tf32_gemm"
+  ],
+  "pattern_directory": "pattern_table/gemm/tf32/sm80/batched_gemm",
+  "template_reference": "/home/sinaheidari/marco_optimizer/kernelbench_cutlass_module",
+  "notes": "Originally designed as Stream-K batched GEMM but reclassified. CUTLASS's ThreadblockSwizzleStreamK only activates Stream-K heuristics in kGemm mode, not kBatched mode. The 1.176x speedup comes from auto-tuned tile shape (128x256x32), not Stream-K decomposition. See batched_gemm_streamk_tf32 for the true Stream-K implementation with CUTLASS source modifications."
+}

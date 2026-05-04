@@ -1,0 +1,121 @@
+{
+  "pattern_id": "gemm_streamk_large_k_sm80",
+  "name": "Stream-K GEMM Scheduling for Large K Dimension",
+  "timestamp": "2026-04-22T08:46:04.063267+00:00",
+  "kernelbench_problem": {
+    "level": 1,
+    "problem_id": 6,
+    "problem_file": "6_Matmul_with_large_K_dimension_.py",
+    "description": "Matrix multiplication C = A @ B with very large K dimension (524288)"
+  },
+  "target_architecture": {
+    "gpu": "A100",
+    "compute_capability": "SM80",
+    "tensor_cores": "FP16 Tensor Cores (FP32 accumulator)"
+  },
+  "optimization_rule": "GEMM",
+  "data_type": "float16 (half_t) inputs, float32 output",
+  "computation_precision": "fp16 tensor core with fp32 accumulation",
+  "input_shapes": {
+    "A": "[M=256, K=524288]",
+    "B": "[K=524288, N=256]",
+    "C": "[M=256, N=256]"
+  },
+  "implementation": {
+    "cutlass_version": "3.8.0",
+    "module": "nvidia-cutlass/3.8.0.0",
+    "tile_config": {
+      "threadblock_tile": "64x128x64",
+      "warp_tile": "32x64x64",
+      "instruction_shape": "16x8x16 (FP16 tensor core)"
+    },
+    "kernel_level": {
+      "pipelining_strategy": "multistage (4 stages)",
+      "description": "cp.async multistage pipeline for Ampere SM80"
+    },
+    "grid_level": {
+      "scheduling": "stream_k",
+      "description": "Stream-K via ThreadblockSwizzleStreamK for load-balanced scheduling across SMs. avail_sms=-1 (auto-detect all SMs), split_k_factor=1 (pure Stream-K)."
+    },
+    "epilogue": "LinearCombination (D = alpha*AB + beta*C)",
+    "layout": "RowMajor for all operands",
+    "kernel_files": [
+      "cutlass_kernels/streamk_gemm.cu",
+      "cutlass_kernels/main.cpp"
+    ],
+    "api": "GemmUniversal with ThreadblockSwizzleStreamK",
+    "precision_handling": "FP32 inputs converted to FP16 in ModelNew.py, CUTLASS runs FP16 with FP32 accumulator, FP32 output."
+  },
+  "verification": {
+    "correctness": "passed",
+    "tolerance": "1e-2 relative (FP16 computation vs FP32 baseline)",
+    "test_sizes": [
+      [
+        64,
+        1024,
+        64
+      ],
+      [
+        256,
+        4096,
+        256
+      ],
+      [
+        256,
+        524288,
+        256
+      ]
+    ],
+    "notes": "All test sizes passed. FP16 FP32-accumulator avoids overflow at K=524288 (FP16-only accumulator overflowed). Relative tolerance used due to FP16 input precision loss."
+  },
+  "performance": {
+    "problem_size": {
+      "M": 256,
+      "K": 524288,
+      "N": 256
+    },
+    "baseline_time_ms": 0.933,
+    "custom_time_ms": 0.884,
+    "speedup": 1.056,
+    "throughput_gflops": 77731.0,
+    "peak_utilization_percent": 24.9,
+    "iterations": 20
+  },
+  "autotuning": {
+    "total_configs": 29,
+    "compiled_tiles": 14,
+    "successful_configs": 23,
+    "best_config": {
+      "tile": [
+        64,
+        128,
+        64
+      ],
+      "warp": [
+        32,
+        64,
+        64
+      ],
+      "stages": 4,
+      "time_ms": 0.884,
+      "gflops": 77731.0,
+      "efficiency_pct": 24.9,
+      "speedup_vs_pytorch": 1.056
+    },
+    "search_space": "K=64 and K=32 threadblock tiles, per-tile stage counts (3-10 based on tile size), SM80 FP16 tensor core"
+  },
+  "status": "accepted",
+  "validation_workflow": {
+    "step0_check_env": "passed",
+    "step1_compilation": "passed",
+    "step2_correctness": "passed",
+    "step3_benchmark": "passed",
+    "step4_autotune": "passed"
+  },
+  "supporting_examples": [
+    "cutlass/examples/47_ampere_gemm_universal_streamk/ampere_gemm_universal_streamk.cu"
+  ],
+  "pattern_directory": "pattern_table/gemm/fp16/sm80/streamk_gemm_large_k",
+  "template_reference": "/home/sinaheidari/marco_optimizer/kernelbench_cutlass_module",
+  "notes": "Stream-K scheduling provides better load balancing for large-K GEMM where M and N are small (256) relative to K (524288). Best config uses smaller tile (64x128x64) for better occupancy. FP16 inputs with FP32 accumulator required to avoid overflow at K=524288. K=64 tile dimension significantly outperforms K=32 for this problem."
+}

@@ -1,0 +1,199 @@
+{
+  "pattern_id": "fmha_fp32_sm80",
+  "name": "Fused Multi-Head Attention (FP32, SM80)",
+  "timestamp": "2026-04-24T02:15:00Z",
+  "kernelbench_problem": {
+    "level": 1,
+    "problem_id": 1,
+    "problem_file": "44_MiniGPTBlock.py",
+    "description": "MiniGPT attention block with causal self-attention - QKV projection, scaled dot-product attention with causal masking, softmax, output projection"
+  },
+  "target_architecture": {
+    "gpu": "A100-SXM4-80GB",
+    "compute_capability": "SM80",
+    "tensor_cores": "FP16/FP32 Tensor Cores"
+  },
+  "optimization_rule": "FMHA",
+  "data_type": "float32",
+  "computation_precision": "fp16",
+  "input_shapes": {
+    "input": "[128, 512, 768]",
+    "qkv_proj_output": "[128, 512, 2304]",
+    "qreshaped": "[128, 8, 512, 96]",
+    "kreshaped": "[128, 8, 512, 96]",
+    "vreshaped": "[128, 8, 512, 96]",
+    "attention_output": "[128, 512, 768]"
+  },
+  "implementation": {
+    "cutlass_version": "2.x",
+    "module": "nvidia-cutlass/3.8.0.0",
+    "tile_config": {
+      "threadblock_tile": "64x128 (best from auto-tuning)",
+      "queries_per_block": 64,
+      "keys_per_block": 128,
+      "head_dim_v": 96,
+      "note": "Auto-tuned over 10 configurations. Best: Q64_K128_Aligned with 3.62x speedup"
+    },
+    "kernel_level": {
+      "pipelining_strategy": "multistage (cp.async prefetching for SM80)",
+      "description": "CUTLASS FMHA uses FlashAttention-style blocked algorithm with 3-stage pipeline"
+    },
+    "grid_level": {
+      "scheduling": "data_parallel",
+      "description": "Standard 2D tiling across batches and heads"
+    },
+    "epilogue": "None (FMHA fuses attention computation with value accumulation)",
+    "layout": "BMHK (Batch, M, Heads, K) with causal masking",
+    "kernel_files": [
+      "cutlass_kernels/fmha_launch.cu",
+      "cutlass_kernels/main.cpp",
+      "cutlass_kernels/fmha/kernel_forward.h",
+      "cutlass_kernels/fmha/gemm/find_default_mma.h",
+      "cutlass_kernels/fmha/gemm/custom_mma.h"
+    ],
+    "autotuning_results": {
+      "search_space_size": 10,
+      "successful_configurations": 9,
+      "best_config": {
+        "variant_idx": 4,
+        "queries_per_block": 64,
+        "keys_per_block": 128,
+        "aligned": true,
+        "description": "Q64_K128_Aligned"
+      },
+      "all_configs": [
+        {
+          "queries": 32,
+          "keys": 64,
+          "aligned": true,
+          "time_ms": 20.76,
+          "gflops": 2482.1,
+          "speedup": 3.43
+        },
+        {
+          "queries": 32,
+          "keys": 128,
+          "aligned": true,
+          "time_ms": 19.93,
+          "gflops": 2585.7,
+          "speedup": 3.58
+        },
+        {
+          "queries": 32,
+          "keys": 256,
+          "aligned": true,
+          "status": "compile_failed"
+        },
+        {
+          "queries": 64,
+          "keys": 64,
+          "aligned": true,
+          "time_ms": 20.83,
+          "gflops": 2474.1,
+          "speedup": 3.42
+        },
+        {
+          "queries": 64,
+          "keys": 128,
+          "aligned": true,
+          "time_ms": 19.71,
+          "gflops": 2615.5,
+          "speedup": 3.62
+        },
+        {
+          "queries": 128,
+          "keys": 64,
+          "aligned": true,
+          "time_ms": 20.39,
+          "gflops": 2528.2,
+          "speedup": 3.5
+        },
+        {
+          "queries": 128,
+          "keys": 128,
+          "aligned": true,
+          "time_ms": 19.91,
+          "gflops": 2588.5,
+          "speedup": 3.58
+        },
+        {
+          "queries": 32,
+          "keys": 128,
+          "aligned": false,
+          "time_ms": 20.07,
+          "gflops": 2568.1,
+          "speedup": 3.55
+        },
+        {
+          "queries": 64,
+          "keys": 64,
+          "aligned": false,
+          "time_ms": 20.21,
+          "gflops": 2550.1,
+          "speedup": 3.53
+        },
+        {
+          "queries": 64,
+          "keys": 128,
+          "aligned": false,
+          "time_ms": 20.88,
+          "gflops": 2468.3,
+          "speedup": 3.41
+        }
+      ]
+    }
+  },
+  "verification": {
+    "correctness": "passed",
+    "tolerance": 0.001,
+    "test_sizes": [
+      [
+        2,
+        64,
+        768
+      ],
+      [
+        4,
+        128,
+        768
+      ],
+      [
+        16,
+        256,
+        768
+      ]
+    ],
+    "notes": "All tests passed with FP16 precision tolerance (1e-3). Maximum relative difference ~0.007% across test sizes. Sample value comparisons show close agreement between baseline and CUTLASS implementations."
+  },
+  "performance": {
+    "problem_size": {
+      "batch_size": 128,
+      "seq_len": 512,
+      "n_embd": 768,
+      "n_head": 8,
+      "head_dim": 96
+    },
+    "baseline_time_ms": 71.31,
+    "optimized_time_ms": 19.71,
+    "speedup": 3.62,
+    "throughput_gflops": 2615.5,
+    "peak_utilization_percent": 13.4,
+    "theoretical_peak_fp32_gflops": 19500,
+    "iterations": 20
+  },
+  "status": "accepted",
+  "validation_workflow": {
+    "step1_setup_env": "passed",
+    "step2_compilation": "passed",
+    "step3_correctness": "passed",
+    "step4_benchmark": "passed",
+    "step5_autotune": "passed"
+  },
+  "supporting_examples": [
+    "/workspace/cutlass_agent/cutlass/examples/41_fused_multi_head_attention",
+    "/workspace/cutlass_agent/cutlass/examples/35_gemm_softmax"
+  ],
+  "pattern_directory": "pattern_table/fmha/fp32/sm80/fused_multi_head_attention",
+  "template_reference": "/Users/raycatcher/Desktop/cutlass_agent/kernelbench_cutlass_module",
+  "notes": "FMHA kernel achieves 3.62x speedup over PyTorch baseline for attention computation. Uses FlashAttention-style blocked algorithm to avoid materializing large attention weight tensors. Auto-tuning over tile configurations showed minimal performance variation (~5%) across valid configurations. Q32_K256 configuration failed compilation due to CUTLASS template constraints. All aligned configurations performed similarly, with Q64_K128 being optimal."
+}

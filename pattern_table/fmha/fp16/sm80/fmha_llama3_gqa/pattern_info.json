@@ -1,0 +1,114 @@
+{
+  "pattern_id": "fmha_llama3_fp16_gqa_sm80",
+  "name": "Fused Multi-Head Attention for Llama 3 8B Full Block (GQA, FP16)",
+  "timestamp": "2026-04-28T22:00:00",
+  "kernelbench_problem": {
+    "level": 3,
+    "problem_id": 51,
+    "problem_file": "51_Llama3_8B_Block.py",
+    "description": "Full Llama 3 8B decoder block with FMHA, GQA, and SwiGLU MLP: 32 Q heads, 8 KV heads, head_dim=128, seq_len=2048, intermediate_dim=14336"
+  },
+  "target_architecture": {
+    "gpu": "A100",
+    "compute_capability": "SM80",
+    "tensor_cores": "FP16"
+  },
+  "optimization_rule": "FMHA (Fused Multi-Head Attention)",
+  "data_type": "float16 (FP16) with FP32 accumulation",
+  "computation_precision": "FP16",
+  "input_shapes": {
+    "batch_size": 16,
+    "seq_len": 2048,
+    "dim": 4096,
+    "n_heads": 32,
+    "n_kv_heads": 8,
+    "head_dim": 128,
+    "intermediate_dim": 14336
+  },
+  "implementation": {
+    "cutlass_version": "3.8.0",
+    "module": "nvidia-cutlass/3.8.0.0",
+    "tile_config": {
+      "threadblock_tile": "QueriesPerBlock=32, KeysPerBlock=128",
+      "warp_tile": "Computed by CUTLASS based on head_dim=128",
+      "instruction_shape": "16x8x8 (SM80 FP16 tensor core)"
+    },
+    "kernel_level": {
+      "pipelining_strategy": "Multistage pipeline (2-3 stages for SM80)",
+      "description": "cp.async-based prefetch pipeline for Ampere architecture"
+    },
+    "grid_level": {
+      "scheduling": "Data parallel",
+      "description": "Standard 2D tiling for attention computation"
+    },
+    "epilogue": "None (pure attention, output is attention result)",
+    "layout": "BMHK (Batch, M, Heads, K) format",
+    "kernel_files": [
+      "cutlass_kernels/fmha_launch.cu",
+      "cutlass_kernels/main.cpp"
+    ],
+    "gqa_handling": "repeat_interleave before kernel call - kernel receives standard MHA inputs",
+    "model_components": [
+      "RMSNorm (pre-attention)",
+      "QKV projections",
+      "CUTLASS FMHA kernel (Q@K^T + softmax + attn@V)",
+      "Output projection",
+      "Residual connection",
+      "RMSNorm (post-attention)",
+      "SwiGLU MLP (gate_proj + SiLU + up_proj + multiply + down_proj)",
+      "Residual connection"
+    ]
+  },
+  "verification": {
+    "correctness": "passed",
+    "tolerance": 0.01,
+    "test_sizes": [
+      [
+        2,
+        128,
+        4096
+      ],
+      [
+        4,
+        512,
+        4096
+      ],
+      [
+        8,
+        1024,
+        4096
+      ],
+      [
+        16,
+        2048,
+        4096
+      ]
+    ],
+    "notes": "FP16 tolerance set to 1e-2. Full Llama decoder block with attention and MLP. GQA handled via repeat_interleave BEFORE FMHA kernel. All test sizes passed correctness verification."
+  },
+  "performance": {
+    "problem_size": "16 x 2048 x 4096",
+    "baseline_time_ms": 656.015,
+    "custom_time_ms": 585.263,
+    "speedup": 1.12,
+    "fmha_only_speedup": 5.29,
+    "attention_time_saved_ms": 69.158,
+    "overhead_percent": 10.8,
+    "throughput_gflops": 34128.3,
+    "peak_utilization_percent": 10.9,
+    "iterations": 20
+  },
+  "status": "accepted",
+  "validation_workflow": {
+    "step0_check_env": "passed",
+    "step1_compilation": "passed",
+    "step2_correctness": "passed",
+    "step3_benchmark": "passed"
+  },
+  "supporting_examples": [
+    "/Users/raycatcher/Desktop/cutlass_agent/cutlass/examples/41_fused_multi_head_attention"
+  ],
+  "pattern_directory": "pattern_table/fmha/fp16/sm80/fmha_llama3_gqa",
+  "template_reference": "/Users/raycatcher/Desktop/cutlass_agent/agent_work/pattern_table/fmha/a100/fused_multi_head_attention_fp32/",
+  "notes": "Full Llama 3 8B decoder block implementation. CUTLASS FMHA kernel replaces core attention computation (Q@K^T + softmax + attn@V). Achieved 5.29x speedup on pure attention computation, 1.12x on full model (includes SwiGLU MLP). GQA with 8 KV heads repeated 4x to match 32 Q heads BEFORE FMHA kernel call. The kernel receives standard MHA inputs. FMHA throughput: 34.1 TFLOPS (10.9% of theoretical peak for FP16 on A100)."
+}

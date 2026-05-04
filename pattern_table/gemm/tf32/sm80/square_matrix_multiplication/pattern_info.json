@@ -1,0 +1,90 @@
+{
+  "pattern_id": "gemm_sqmatmul_tf32_sm80",
+  "name": "Square Matrix Multiplication with TF32 Tensor Cores",
+  "timestamp": "2026-04-17T19:00:00",
+  "kernelbench_problem": {
+    "level": 1,
+    "problem_id": 1,
+    "problem_file": "1_Square_matrix_multiplication_.py",
+    "description": "Simple square matrix multiplication C = A * B where A and B are NxN matrices"
+  },
+  "target_architecture": {
+    "gpu": "A100",
+    "compute_capability": "SM80",
+    "tensor_cores": "TF32"
+  },
+  "optimization_rule": "GEMM",
+  "data_type": "float32",
+  "computation_precision": "tf32",
+  "input_shapes": {
+    "N": 4096,
+    "A_shape": [
+      4096,
+      4096
+    ],
+    "B_shape": [
+      4096,
+      4096
+    ],
+    "C_shape": [
+      4096,
+      4096
+    ]
+  },
+  "implementation": {
+    "cutlass_version": "3.8.0.0",
+    "module": "nvidia-cutlass/3.8.0.0",
+    "tile_config": {
+      "threadblock_tile": "128x128x16",
+      "warp_tile": "64x64x16",
+      "instruction_shape": "16x16x16"
+    },
+    "kernel_level": {
+      "pipelining_strategy": "multistage",
+      "description": "Ampere (SM80) multistage pipeline using cp.async for prefetching with all warps taking dual roles (producer + consumer)"
+    },
+    "grid_level": {
+      "scheduling": "data_parallel",
+      "description": "Standard 2D tiling data parallel scheduling for square matrices"
+    },
+    "epilogue": "None",
+    "layout": "RowMajor for all matrices",
+    "kernel_files": [
+      "cutlass_kernels/ampere_tf32_gemm.cu",
+      "cutlass_kernels/main.cpp"
+    ]
+  },
+  "verification": {
+    "correctness": "passed",
+    "tolerance": 0.0001,
+    "test_sizes": [
+      512,
+      1024,
+      2048
+    ],
+    "notes": "Bit-exact match with PyTorch TF32 cuBLAS implementation"
+  },
+  "performance": {
+    "problem_size": 4096,
+    "baseline_time_ms": 0.341,
+    "custom_time_ms": 0.372,
+    "speedup": 0.92,
+    "overhead_percent": 9,
+    "throughput_gflops": 98286,
+    "peak_utilization_percent": 31,
+    "iterations": 100
+  },
+  "status": "accepted",
+  "validation_workflow": {
+    "step1_setup_env": "passed",
+    "step2_compilation": "passed",
+    "step3_correctness": "passed",
+    "step4_benchmark": "passed"
+  },
+  "supporting_examples": [
+    "nvidia-cutlass/3.8.0.0/examples/41_tensorop_ampere_tf32_gemm"
+  ],
+  "pattern_directory": "pattern_table/gemm/tf32/sm80/square_matrix_multiplication",
+  "template_reference": "/home/sinaheidari/marco_optimizer/kernelbench_cutlass_module",
+  "notes": "Successfully validated CUTLASS TF32 GEMM kernel for square matrix multiplication. Uses nvidia-cutlass module for cluster compatibility."
+}
